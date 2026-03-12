@@ -1,6 +1,6 @@
 import { component$ } from '@builder.io/qwik';
 import { routeAction$, Form, z, zod$ } from '@builder.io/qwik-city';
-import { addSongRequest } from '../../../../lib/db';
+import { addSongRequest } from '~/lib/db';
 
 export const useRequestSongAction = routeAction$(
   async (data, { params }) => {
