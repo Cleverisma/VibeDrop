@@ -54,6 +54,8 @@
   },
   "nx": {},
   "dependencies": {
-    "cssnano": "^7.1.3"
+    "@supabase/supabase-js": "^2.99.1",
+    "cssnano": "^7.1.3",
+    "supabase-auth-helpers-qwik": "^0.0.3"
   }
 }

@@ -1,42 +1,68 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '';
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
 export interface SongRequest {
   id: string;
+  event_id: string;
+  title: string;
+  artist: string;
+  guest_name: string | null;
+  status: 'pending' | 'played';
+  created_at: string;
+}
+
+export const getRequestsByEvent = async (eventId: string): Promise<SongRequest[]> => {
+  const { data, error } = await supabase
+    .from('song_requests')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching requests:', error);
+    return [];
+  }
+  return data as SongRequest[];
+};
+
+export const addSongRequest = async (requestData: {
   eventId: string;
   title: string;
   artist: string;
   guestName?: string;
-  status: 'pending' | 'played';
-  createdAt: Date;
-}
+}): Promise<SongRequest | null> => {
+  const { data, error } = await supabase
+    .from('song_requests')
+    .insert([
+      {
+        event_id: requestData.eventId,
+        title: requestData.title,
+        artist: requestData.artist,
+        guest_name: requestData.guestName || null,
+        status: 'pending',
+      },
+    ])
+    .select()
+    .single();
 
-// In-memory mock database
-const requests: SongRequest[] = [];
-
-export const getRequestsByEvent = async (eventId: string): Promise<SongRequest[]> => {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return requests
-    .filter((req) => req.eventId === eventId)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-};
-
-export const addSongRequest = async (
-  requestData: Omit<SongRequest, 'id' | 'status' | 'createdAt'>
-): Promise<SongRequest> => {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  const newRequest: SongRequest = {
-    ...requestData,
-    id: crypto.randomUUID(),
-    status: 'pending',
-    createdAt: new Date(),
-  };
-  requests.push(newRequest);
-  return newRequest;
+  if (error) {
+    console.error('Error adding request:', error);
+    return null;
+  }
+  return data as SongRequest;
 };
 
 export const markRequestAsPlayed = async (id: string): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const req = requests.find((r) => r.id === id);
-  if (req) {
-    req.status = 'played';
+  const { error } = await supabase
+    .from('song_requests')
+    .update({ status: 'played' })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating request:', error);
   }
 };

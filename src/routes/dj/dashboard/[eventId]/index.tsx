@@ -1,6 +1,6 @@
-import { component$ } from '@builder.io/qwik';
-import { routeLoader$, routeAction$, Form } from '@builder.io/qwik-city';
-import { getRequestsByEvent, markRequestAsPlayed } from '../../../../lib/db';
+import { component$, useSignal, useTask$, useVisibleTask$ } from '@builder.io/qwik';
+import { routeLoader$, routeAction$, Form, useLocation } from '@builder.io/qwik-city';
+import { getRequestsByEvent, markRequestAsPlayed, supabase, type SongRequest } from '../../../../lib/db';
 
 export const useSongsLoader = routeLoader$(async ({ params }) => {
   const eventId = params.eventId;
@@ -17,11 +17,58 @@ export const useMarkPlayedAction = routeAction$(async (data) => {
 });
 
 export default component$(() => {
-  const requests = useSongsLoader();
+  const initialRequests = useSongsLoader();
   const markPlayedAction = useMarkPlayedAction();
+  const location = useLocation();
+  const eventId = location.params.eventId;
 
-  const pendingRequests = requests.value.filter(r => r.status === 'pending');
-  const playedRequests = requests.value.filter(r => r.status === 'played');
+  const requests = useSignal<SongRequest[]>([]);
+
+  useTask$(({ track }) => {
+    track(() => initialRequests.value);
+    requests.value = [...initialRequests.value];
+  });
+
+  useVisibleTask$(({ cleanup }) => {
+    const channel = supabase
+      .channel(`song_requests_${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'song_requests',
+          filter: `event_id=eq.${eventId}`,
+        },
+        (payload) => {
+          const newRequest = payload.new as SongRequest;
+          requests.value = [newRequest, ...requests.value];
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'song_requests',
+          filter: `event_id=eq.${eventId}`,
+        },
+        (payload) => {
+          const updatedRequest = payload.new as SongRequest;
+          requests.value = requests.value.map((req) =>
+            req.id === updatedRequest.id ? updatedRequest : req
+          );
+        }
+      )
+      .subscribe();
+
+    cleanup(() => {
+      supabase.removeChannel(channel);
+    });
+  });
+
+  const pendingRequests = requests.value.filter((r) => r.status === 'pending');
+  const playedRequests = requests.value.filter((r) => r.status === 'played');
 
   return (
     <div class="min-h-screen bg-neutral-950 text-neutral-100 p-4 md:p-8 font-sans">
@@ -66,13 +113,13 @@ export default component$(() => {
                       <div>
                         <h3 class="font-bold text-lg text-white mb-0.5">{req.title}</h3>
                         <p class="text-pink-400 text-sm font-medium mb-3">{req.artist}</p>
-                        {req.guestName && (
+                        {req.guest_name && (
                           <div class="inline-flex items-center gap-1.5 bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-neutral-400">
                             <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                               <circle cx="12" cy="7" r="4"></circle>
                             </svg>
-                            {req.guestName}
+                            {req.guest_name}
                           </div>
                         )}
                       </div>
