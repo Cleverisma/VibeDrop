@@ -30,10 +30,12 @@
     "@qwik-ui/styled": "^0.4.1",
     "@qwik-ui/utils": "^0.3.3",
     "@qwikest/icons": "^0.0.13",
+    "@supabase/supabase-js": "^2.99.1",
     "@tailwindcss/vite": "^4.1.4",
     "@types/node": "20.19.0",
     "autoprefixer": "^10.4.14",
     "class-variance-authority": "0.7.1",
+    "cssnano": "^7.1.3",
     "eslint": "9.32.0",
     "eslint-plugin-qwik": "^1.19.1",
     "globals": "16.4.0",
@@ -48,14 +50,10 @@
     "typescript": "5.4.5",
     "typescript-eslint": "8.38.0",
     "typescript-plugin-css-modules": "latest",
+    "supabase-auth-helpers-qwik": "^0.0.3",
     "undici": "*",
     "vite": "7.3.1",
     "vite-tsconfig-paths": "^4.2.1"
   },
-  "nx": {},
-  "dependencies": {
-    "@supabase/supabase-js": "^2.99.1",
-    "cssnano": "^7.1.3",
-    "supabase-auth-helpers-qwik": "^0.0.3"
-  }
+  "nx": {}
 }
