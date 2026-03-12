@@ -15,6 +15,12 @@ export interface SongRequest {
   created_at: string;
 }
 
+export interface VibeEvent {
+  id: string;
+  name: string;
+  dj_token: string;
+}
+
 export const getRequestsByEvent = async (eventId: string): Promise<SongRequest[]> => {
   const { data, error } = await supabase
     .from('song_requests')
@@ -27,6 +33,34 @@ export const getRequestsByEvent = async (eventId: string): Promise<SongRequest[]
     return [];
   }
   return data as SongRequest[];
+};
+
+export const getEvent = async (id: string): Promise<VibeEvent | null> => {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching event:', error);
+    return null;
+  }
+  return data as VibeEvent;
+};
+
+export const createEvent = async (event: VibeEvent): Promise<VibeEvent | null> => {
+  const { data, error } = await supabase
+    .from('events')
+    .insert([event])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating event:', error);
+    return null;
+  }
+  return data as VibeEvent;
 };
 
 export const addSongRequest = async (requestData: {

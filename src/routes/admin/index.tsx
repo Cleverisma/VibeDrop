@@ -1,54 +1,57 @@
 import { component$, useSignal, $ } from '@builder.io/qwik';
+import { routeAction$, Form, z, zod$ } from '@builder.io/qwik-city';
+import { createEvent } from '~/lib/db';
 import QRCode from 'qrcode';
 
+export const useCreateEventAction = routeAction$(
+  async (data) => {
+    const slug = data.eventName
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    // Generar djToken corto (alfa-numérico de 8 caracteres)
+    const djToken = Math.random().toString(36).substring(2, 10);
+
+    const newEvent = await createEvent({
+      id: slug,
+      name: data.eventName.trim(),
+      dj_token: djToken,
+    });
+
+    if (!newEvent) {
+      return { success: false, error: 'Hubo un error al crear el evento.' };
+    }
+
+    return { success: true, eventId: slug, djToken };
+  },
+  zod$({
+    eventName: z.string().min(1, 'El nombre del evento es obligatorio.'),
+  })
+);
+
 export default component$(() => {
-  const eventName = useSignal('');
-  const eventId = useSignal('');
+  const createEventAction = useCreateEventAction();
   const qrCodeUrl = useSignal('');
-  const isGenerating = useSignal(false);
   const copyFeedback = useSignal('');
 
-  const generateQRCode = $(async () => {
-    // Validar que el nombre del evento no esté vacío
-    if (!eventName.value.trim()) return;
-
-    isGenerating.value = true;
-    
+  const generateQRImage = $(async (guestLink: string) => {
     try {
-      // Slugificar el nombre para generar un eventId limpio y seguro para URL
-      const slug = eventName.value
-        .trim()
-        .toLowerCase()
-        // Remover acentos y diacríticos
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        // Remover caracteres no alfanuméricos excepto espacios y guiones
-        .replace(/[^a-z0-9\s-]/g, '')
-        // Reemplazar espacios y múltiples guiones por un solo guión
-        .replace(/[\s-]+/g, '-')
-        // Quitar guiones a los extremos
-        .replace(/^-+|-+$/g, '');
-
-      eventId.value = slug;
-
-      // Crear URL completa del invitado (basada en el origin actual)
-      const guestLink = `${window.location.origin}/fiesta/${slug}`;
-
-      // Generar el código QR en base64
       const dataUrl = await QRCode.toDataURL(guestLink, {
         width: 300,
         margin: 2,
         color: {
-          dark: '#000000FF', // Código QR negro
-          light: '#FFFFFFFF', // Fondo blanco para mayor contraste
+          dark: '#000000FF',
+          light: '#FFFFFFFF',
         },
       });
-
       qrCodeUrl.value = dataUrl;
     } catch (err) {
       console.error('Error al generar el Código QR:', err);
-    } finally {
-      isGenerating.value = false;
     }
   });
 
@@ -64,6 +67,22 @@ export default component$(() => {
     }
   });
 
+  const eventId = createEventAction.value?.eventId;
+  const djToken = createEventAction.value?.djToken;
+
+  // Si tenemos éxito creamos la imagen del QR reaccionando a la acción
+  if (createEventAction.value?.success && eventId && !createEventAction.isRunning && !qrCodeUrl.value) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (origin) {
+      generateQRImage(`${origin}/fiesta/${eventId}`);
+    }
+  }
+  
+  // Limpiar imagen si se oculta o hay nueva escritura
+  if (createEventAction.isRunning && qrCodeUrl.value) {
+    qrCodeUrl.value = '';
+  }
+
   return (
     <div class="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 sm:p-6 font-sans antialiased">
       <div class="w-full max-w-lg bg-neutral-900 shadow-2xl rounded-3xl p-8 border border-neutral-800">
@@ -74,8 +93,13 @@ export default component$(() => {
           <p class="text-neutral-400 text-sm">Crea nuevos eventos para VibeDrop y genera su QR.</p>
         </div>
 
-        {/* Input de Nombre del Evento */}
-        <div class="space-y-4 mb-8">
+        {createEventAction.value?.error && (
+            <div class="mb-4 p-3 bg-red-950/50 border border-red-500/20 text-red-400 rounded-xl text-center text-sm font-medium animate-pulse">
+              {createEventAction.value.error}
+            </div>
+        )}
+
+        <Form action={createEventAction} class="space-y-4 mb-8">
           <div class="space-y-1.5">
             <label for="eventName" class="block text-sm font-medium text-neutral-300">
               Nombre de la Fiesta o Evento
@@ -83,41 +107,40 @@ export default component$(() => {
             <input
               type="text"
               id="eventName"
-              bind:value={eventName}
+              name="eventName"
+              required
               placeholder="Ej: Boda de Ana y Juan"
               class="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all duration-200"
-              onKeyDown$={(e) => {
-                if (e.key === 'Enter') {
-                  generateQRCode();
-                }
-              }}
             />
+            {createEventAction.value?.fieldErrors?.eventName && (
+              <p class="text-red-400 text-xs mt-1">{createEventAction.value.fieldErrors.eventName[0]}</p>
+            )}
           </div>
 
           <button
-            onClick$={generateQRCode}
-            disabled={!eventName.value.trim() || isGenerating.value}
+            type="submit"
+            disabled={createEventAction.isRunning}
             class="w-full bg-neutral-100 text-neutral-900 hover:bg-white font-bold py-3.5 px-6 rounded-xl shadow-lg transform transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
           >
-            {isGenerating.value ? 'Generando...' : 'Generar Evento y QR'}
+            {createEventAction.isRunning ? 'Generando...' : 'Generar Evento y QR'}
           </button>
-        </div>
+        </Form>
 
         {/* Tarjeta de Resultados */}
-        {qrCodeUrl.value && (
+        {createEventAction.value?.success && eventId && djToken && qrCodeUrl.value && (
           <div class="mt-8 pt-8 border-t border-neutral-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div class="flex flex-col items-center gap-6">
               
               <div class="text-center">
                 <h2 class="text-lg font-bold text-white mb-1">Código QR Generado</h2>
-                <p class="text-xs text-neutral-400">ID: {eventId.value}</p>
+                <p class="text-xs text-neutral-400">ID: {eventId}</p>
               </div>
 
               {/* Imagen QR */}
               <div class="bg-white p-3 rounded-2xl shadow-xl shadow-purple-900/10">
                 <img 
                   src={qrCodeUrl.value} 
-                  alt={`QR de ${eventName.value}`} 
+                  alt="Código QR de la fiesta" 
                   width="250" 
                   height="250"
                   class="rounded-xl"
@@ -127,7 +150,7 @@ export default component$(() => {
               <div class="w-full flex gap-3">
                 <a
                   href={qrCodeUrl.value}
-                  download={`VibeDrop-QR-${eventId.value}.png`}
+                  download={`VibeDrop-QR-${eventId}.png`}
                   class="flex-1 flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-3 px-4 rounded-xl transition-colors"
                 >
                   <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -145,13 +168,19 @@ export default component$(() => {
                 {/* Enlace al DJ Dashboard */}
                 <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3 flex justify-between items-center group">
                   <div class="flex flex-col truncate pr-4">
-                    <span class="text-xs font-semibold text-neutral-500 mb-0.5 uppercase tracking-wider">DJ Dashboard</span>
+                    <span class="text-xs flex items-center gap-1.5 font-semibold text-neutral-500 mb-0.5 uppercase tracking-wider tooltip" title="Este link es secreto. No lo compartas.">
+                      <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                      </svg>
+                      DJ Dashboard Secreto
+                    </span>
                     <span class="text-sm text-neutral-300 truncate font-mono">
-                      /dj/dashboard/{eventId.value}
+                      /dj/dashboard/{eventId}/<span class="text-emerald-400 font-bold">{djToken}</span>
                     </span>
                   </div>
                   <button 
-                    onClick$={() => copyToClipboard(`${window.location.origin}/dj/dashboard/${eventId.value}`, 'dj')}
+                    onClick$={() => copyToClipboard(`${window.location.origin}/dj/dashboard/${eventId}/${djToken}`, 'dj')}
                     class="p-2 bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors flex-shrink-0 text-neutral-400 hover:text-white"
                     title="Copiar Link DJ"
                   >
@@ -171,13 +200,13 @@ export default component$(() => {
                 {/* Enlace Invitado */}
                 <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3 flex justify-between items-center group">
                   <div class="flex flex-col truncate pr-4">
-                    <span class="text-xs font-semibold text-pink-500 mb-0.5 uppercase tracking-wider">Link Invitados</span>
+                    <span class="text-xs font-semibold text-pink-500 mb-0.5 uppercase tracking-wider">Link Invitados Público</span>
                     <span class="text-sm text-neutral-300 truncate font-mono">
-                      /fiesta/{eventId.value}
+                      /fiesta/{eventId}
                     </span>
                   </div>
                   <button 
-                    onClick$={() => copyToClipboard(`${window.location.origin}/fiesta/${eventId.value}`, 'guest')}
+                    onClick$={() => copyToClipboard(`${window.location.origin}/fiesta/${eventId}`, 'guest')}
                     class="p-2 bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors flex-shrink-0 text-neutral-400 hover:text-white"
                     title="Copiar Link Invitados"
                   >

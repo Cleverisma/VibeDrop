@@ -1,9 +1,17 @@
 import { component$, useSignal, useTask$, useVisibleTask$ } from '@builder.io/qwik';
 import { routeLoader$, routeAction$, Form, useLocation } from '@builder.io/qwik-city';
-import { getRequestsByEvent, markRequestAsPlayed, supabase, type SongRequest } from '../../../../lib/db';
+import { getRequestsByEvent, markRequestAsPlayed, supabase, getEvent, type SongRequest } from '../../../../../lib/db';
 
-export const useSongsLoader = routeLoader$(async ({ params }) => {
+export const useSongsLoader = routeLoader$(async ({ params, error }) => {
   const eventId = params.eventId;
+  const djToken = params.djToken;
+  
+  const event = await getEvent(eventId);
+  
+  if (!event || event.dj_token !== djToken) {
+    throw error(404, 'No autorizado o Evento no encontrado');
+  }
+
   const requests = await getRequestsByEvent(eventId);
   return requests;
 });
@@ -21,6 +29,8 @@ export default component$(() => {
   const markPlayedAction = useMarkPlayedAction();
   const location = useLocation();
   const eventId = location.params.eventId;
+  // El token real ya está validado por el loader, pero podemos extraerlo de params si fuese útil
+  // const djToken = location.params.djToken;
 
   const requests = useSignal<SongRequest[]>([]);
 
